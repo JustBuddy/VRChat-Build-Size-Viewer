@@ -4,12 +4,12 @@
  * https://github.com/MunifiSense/VRChat-Build-Size-Viewer
  */
 
-#if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using System.IO;
+using System.Linq;
 
 public class BuildSizeViewer : EditorWindow {
 
@@ -17,11 +17,15 @@ public class BuildSizeViewer : EditorWindow {
         public string size;
         public string percent;
         public string path;
+        public long sizeInBytes; // Add this property
     }
 
     List<BuildObject> buildObjectList;
     List<string> uncompressedList;
-    string buildLogPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData) + "/Unity/Editor/Editor.log";
+    string buildLogPath =
+        System.Environment.GetFolderPath(
+            System.Environment.SpecialFolder.LocalApplicationData
+        ) + "/Unity/Editor/Editor.log";
     private char[] delimiterChars = { ' ', '\t' };
     float win;
     float w1;
@@ -32,7 +36,6 @@ public class BuildSizeViewer : EditorWindow {
     Vector2 scrollPos;
 
     [MenuItem("Window/Muni/VRC Build Size Viewer")]
-
     public static void ShowWindow() {
         EditorWindow.GetWindow(typeof(BuildSizeViewer));
     }
@@ -43,14 +46,19 @@ public class BuildSizeViewer : EditorWindow {
         float w2 = (float)(win * 0.15);
         float w3 = (float)(win * 0.35);
         EditorGUILayout.LabelField("VRC Build Size Viewer", EditorStyles.boldLabel);
-        EditorGUILayout.LabelField("Create a build of your world/avatar and click the button!", EditorStyles.label);
+        EditorGUILayout.LabelField(
+            "Create a build of your world/avatar and click the button!",
+            EditorStyles.label
+        );
         if (GUILayout.Button("Read Build Log")) {
             buildLogFound = false;
             buildLogFound = getBuildSize();
         }
         if (buildLogFound) {
             if (uncompressedList != null && uncompressedList.Count != 0) {
-                EditorGUILayout.LabelField("Total Compressed Build Size: " + totalSize);
+                EditorGUILayout.LabelField(
+                    "Total Compressed Build Size: " + totalSize
+                );
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.Separator();
                 EditorGUILayout.EndHorizontal();
@@ -77,9 +85,12 @@ public class BuildSizeViewer : EditorWindow {
                     EditorGUILayout.LabelField(buildObject.percent, GUILayout.Width(w1));
                     EditorGUILayout.LabelField(buildObject.size, GUILayout.Width(w2));
                     EditorGUILayout.LabelField(buildObject.path);
-                    if(buildObject.path != "Resources/unity_builtin_extra") {
+                    if (buildObject.path != "Resources/unity_builtin_extra") {
                         if (GUILayout.Button("Go", GUILayout.Width(w1))) {
-                            UnityEngine.Object obj = AssetDatabase.LoadAssetAtPath(buildObject.path, typeof(UnityEngine.Object));
+                            UnityEngine.Object obj = AssetDatabase.LoadAssetAtPath(
+                                buildObject.path,
+                                typeof(UnityEngine.Object)
+                            );
                             Selection.activeObject = obj;
                             EditorGUIUtility.PingObject(obj);
                         }
@@ -96,44 +107,54 @@ public class BuildSizeViewer : EditorWindow {
         FileUtil.ReplaceFile(buildLogPath, buildLogPath + "copy");
         StreamReader reader = new StreamReader(buildLogPath + "copy");
 
-        if(reader == null) {
+        if (reader == null) {
             Debug.LogWarning("Could not read build file.");
             FileUtil.DeleteFileOrDirectory(buildLogPath + "copy");
             return false;
         }
 
         string line = reader.ReadLine();
-        while(line != null) {
-            if ((line.Contains("scene-") && line.Contains(".vrcw"))
-                || (line.Contains("avtr") && line.Contains(".prefab.unity3d"))) {
+        while (line != null) {
+            if (
+                (line.Contains("scene-") && line.Contains(".vrcw")) ||
+                (line.Contains("avtr") && line.Contains(".prefab.unity3d"))
+            ) {
                 //Debug.Log("Build found!");
                 buildObjectList = new List<BuildObject>();
                 uncompressedList = new List<string>();
                 line = reader.ReadLine();
                 //Debug.Log(line);
-                while (!line.Contains("Compressed Size"))
-                {
+                while (!line.Contains("Compressed Size")) {
                     line = reader.ReadLine();
                 }
                 totalSize = line.Split(':')[1];
                 line = reader.ReadLine();
-                while (line != "Used Assets and files from the Resources folder, sorted by uncompressed size:") {
+                while (
+                    line !=
+                    "Used Assets and files from the Resources folder, sorted by uncompressed size:"
+                ) {
                     uncompressedList.Add(line);
                     line = reader.ReadLine();
                 }
                 line = reader.ReadLine();
-                while (line != "-------------------------------------------------------------------------------") {
+                while (
+                    line !=
+                    "-------------------------------------------------------------------------------"
+                ) {
                     string[] splitLine = line.Split(delimiterChars);
                     BuildObject temp = new BuildObject();
-                    temp.size = splitLine[1]+splitLine[2];
+                    temp.size = splitLine[1] + splitLine[2];
                     temp.percent = splitLine[4];
                     temp.path = splitLine[5];
-                    for (int i=6; i<splitLine.Length; i++) {
+                    for (int i = 6; i < splitLine.Length; i++) {
                         temp.path += (" " + splitLine[i]);
                     }
                     buildObjectList.Add(temp);
                     line = reader.ReadLine();
                 }
+
+                // Aggregate package data
+                AggregatePackageSizes();
             }
             line = reader.ReadLine();
         }
@@ -141,5 +162,78 @@ public class BuildSizeViewer : EditorWindow {
         reader.Close();
         return true;
     }
+
+    private void AggregatePackageSizes() {
+        string packagesPath = Path.Combine(Application.dataPath, "../Packages");
+        DirectoryInfo packageDir = new DirectoryInfo(packagesPath);
+
+        if (!packageDir.Exists) {
+            Debug.LogWarning("Packages directory not found: " + packagesPath);
+            return;
+        }
+
+        // Filter out the assets that are from packages
+        List<BuildObject> packageAssets = buildObjectList
+            .Where(asset => asset.path.StartsWith("Packages/"))
+            .ToList();
+
+        if (packageAssets.Count == 0) {
+            Debug.Log("No package assets found in build log.");
+            return;
+        }
+
+        // Group assets by package name
+        var packageGroups = packageAssets.GroupBy(asset => {
+            // Extract the package name from the path
+            string path = asset.path;
+            string[] parts = path.Split('/');
+            if (parts.Length > 1) {
+                return parts[1]; // The second part of the path is the package name
+            }
+            return "Unknown Package";
+        });
+
+        // Create a combined package entry for each package
+        List<BuildObject> packageEntries = new List<BuildObject>();
+        foreach (var packageGroup in packageGroups) {
+            string packageName = packageGroup.Key;
+            float totalPackageSizeInBytes = 0;
+
+            foreach (BuildObject packageAsset in packageGroup) {
+                // Extract size value, handling 'kb', 'mb', 'bytes'
+                string sizeString = packageAsset.size.ToLower();
+                float sizeValue = float.Parse(
+                    sizeString.Replace("kb", "").Replace("mb", "").Replace("bytes", "")
+                );
+
+                if (sizeString.Contains("kb")) {
+                    sizeValue *= 1024;
+                } else if (sizeString.Contains("mb")) {
+                    sizeValue *= 1024 * 1024;
+                }
+
+                totalPackageSizeInBytes += sizeValue;
+            }
+
+            // Convert to human-readable size
+            string packageSizeString = EditorUtility.FormatBytes(
+                (long)totalPackageSizeInBytes
+            );
+
+            // Create a combined package entry
+            BuildObject packageEntry = new BuildObject {
+                size = packageSizeString,
+                percent = "Package (Combined)", // Not adding to overall size, so no percentage
+                path = packageName,
+                sizeInBytes = (long)totalPackageSizeInBytes // Store size in bytes
+            };
+            packageEntries.Add(packageEntry);
+        }
+
+        // Sort the package entries by size (descending)
+        packageEntries = packageEntries.OrderByDescending(p => p.sizeInBytes).ToList();
+
+        // Insert the combined package entries at the beginning
+        buildObjectList.InsertRange(0, packageEntries);
+    }
 }
-#endif
