@@ -1,4 +1,6 @@
 # VRChat Build Size Viewer
+ Fork adds an additional total sizes of referenced package data, to measure a packages footprint in a build.  
+   
  A script for viewing the build size for VRC worlds and avatars after building.
  It's kinda ugly. So sorry about that. Made it for myself, but thought it might be handy for others!
 
