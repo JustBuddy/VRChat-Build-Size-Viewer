@@ -18,8 +18,8 @@ public class BuildSizeViewer : EditorWindow {
     public string size;
     public string percent;
     public string path;
-    public long sizeInBytes; // Add this property
-    public Type assetType; // Add this property to store the asset type
+    public long sizeInBytes;
+    public Type assetType;
   }
 
   private List<BuildObject> buildObjectList;
@@ -36,7 +36,7 @@ public class BuildSizeViewer : EditorWindow {
   private string totalSize;
   private bool buildLogFound = false;
   private Vector2 scrollPos;
-  private string currentFilter = "All"; // Default filter
+  private string currentFilter = "All";
 
   [MenuItem("Window/Muni/VRC Build Size Viewer")]
   public static void ShowWindow() {
@@ -77,7 +77,12 @@ public class BuildSizeViewer : EditorWindow {
       if (GUILayout.Button("Material")) {
         currentFilter = "Material";
       }
-
+      if (GUILayout.Button("Shader")) {
+        currentFilter = "Shader";
+      }
+      if (GUILayout.Button("Animation")) {
+        currentFilter = "Animation";
+      }
       EditorGUILayout.EndHorizontal();
 
       if (uncompressedList != null && uncompressedList.Count != 0) {
@@ -123,6 +128,12 @@ public class BuildSizeViewer : EditorWindow {
               break;
             case "Material":
               shouldShow = buildObject.assetType == typeof(Material);
+              break;
+            case "Shader":
+              shouldShow = buildObject.assetType == typeof(Shader);
+              break;
+            case "Animation":
+              shouldShow = buildObject.assetType == typeof(AnimationClip);
               break;
           }
 
@@ -269,8 +280,8 @@ public class BuildSizeViewer : EditorWindow {
         percent =
             "Package (Combined)",  // Not adding to overall size, so no percentage
         path = packageName,
-        sizeInBytes = (long)totalPackageSizeInBytes,  // Store size in bytes
-        assetType = null  // Packages aren't a specific asset type.
+        sizeInBytes = (long)totalPackageSizeInBytes,
+        assetType = null
       };
       packageEntries.Add(packageEntry);
     }
